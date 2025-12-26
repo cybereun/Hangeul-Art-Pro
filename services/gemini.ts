@@ -1,14 +1,16 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 const IMAGE_MODEL = 'gemini-3-pro-image-preview';
 
 /**
- * 사용자가 제공한 API 키를 사용하여 이미지를 생성합니다.
+ * Gemini 3 Pro Image 모델을 사용하여 이미지를 생성합니다.
+ * 플랫폼 가이드라인에 따라 호출 시점에 인스턴스를 생성합니다.
  */
-export async function generateHangeulImage(prompt: string, apiKey: string): Promise<string | null> {
-  if (!apiKey) throw new Error("API 키가 설정되지 않았습니다.");
-  
-  const ai = new GoogleGenAI({ apiKey: apiKey });
+export async function generateHangeulImage(prompt: string): Promise<string | null> {
+  // Always use process.env.API_KEY directly as required by guidelines.
+  // Create a new GoogleGenAI instance right before making an API call.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   try {
     const response = await ai.models.generateContent({
@@ -25,6 +27,7 @@ export async function generateHangeulImage(prompt: string, apiKey: string): Prom
     });
 
     if (response.candidates?.[0]?.content?.parts) {
+      // Find the image part as it may not be the first part.
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
           const base64EncodeString: string = part.inlineData.data;
@@ -36,27 +39,5 @@ export async function generateHangeulImage(prompt: string, apiKey: string): Prom
   } catch (error: any) {
     console.error("Gemini Image Generation Error:", error);
     throw error;
-  }
-}
-
-/**
- * API 키의 유효성을 가벼운 쿼리로 테스트합니다.
- */
-export async function testApiConnection(apiKey: string): Promise<boolean> {
-  if (!apiKey) return false;
-  const ai = new GoogleGenAI({ apiKey: apiKey });
-  try {
-    // 가장 가벼운 모델로 응답 여부만 확인
-    await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: 'Ping',
-      config: { 
-        maxOutputTokens: 1
-      }
-    });
-    return true;
-  } catch (error) {
-    console.error("API Connection Test Failed:", error);
-    return false;
   }
 }
