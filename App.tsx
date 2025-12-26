@@ -60,7 +60,6 @@ const App: React.FC = () => {
     const savedKey = localStorage.getItem('hangeul_art_api_key_enc');
     if (savedKey) {
       try {
-        // base64 디코딩 시 오류 방지
         const decodedKey = atob(savedKey);
         setCustomApiKey(decodedKey);
       } catch (e) {
