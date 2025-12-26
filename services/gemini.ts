@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 const IMAGE_MODEL = 'gemini-3-pro-image-preview';
@@ -7,6 +6,8 @@ const IMAGE_MODEL = 'gemini-3-pro-image-preview';
  * 사용자가 제공한 API 키를 사용하여 이미지를 생성합니다.
  */
 export async function generateHangeulImage(prompt: string, apiKey: string): Promise<string | null> {
+  if (!apiKey) throw new Error("API 키가 설정되지 않았습니다.");
+  
   const ai = new GoogleGenAI({ apiKey: apiKey });
 
   try {
@@ -42,14 +43,15 @@ export async function generateHangeulImage(prompt: string, apiKey: string): Prom
  * API 키의 유효성을 가벼운 쿼리로 테스트합니다.
  */
 export async function testApiConnection(apiKey: string): Promise<boolean> {
+  if (!apiKey) return false;
   const ai = new GoogleGenAI({ apiKey: apiKey });
   try {
+    // 가장 가벼운 모델로 응답 여부만 확인
     await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: 'Ping',
       config: { 
-        maxOutputTokens: 1,
-        thinkingConfig: { thinkingBudget: 0 }
+        maxOutputTokens: 1
       }
     });
     return true;
