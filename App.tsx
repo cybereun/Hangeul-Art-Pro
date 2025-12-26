@@ -4,50 +4,25 @@ import { STYLES } from './constants';
 import { StyleTemplate, GeneratedImage } from './types';
 import { generateHangeulImage } from './services/gemini';
 
-// Define the AIStudio interface for the platform's API key management
-interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
-}
-
-// Extend the Window interface to include aistudio
+// @google/genai guidelines: Using global aistudio for API key management.
+// Augmenting global types to avoid "Subsequent property declarations" error.
 declare global {
+  interface AIStudio {
+    hasSelectedApiKey(): Promise<boolean>;
+    openSelectKey(): Promise<void>;
+  }
+
   interface Window {
-    aistudio?: AIStudio;
+    aistudio: AIStudio;
   }
 }
 
 const CATEGORIES = [
-  { 
-    id: 'all', 
-    name: '🏠 전체 스타일 보기', 
-    icon: 'fa-border-all',
-    desc: '모든 한글 아트 스타일을 한눈에 확인하세요.'
-  },
-  { 
-    id: 'Mood & Concept', 
-    name: '🎭 분위기와 컨셉', 
-    icon: 'fa-wand-magic-sparkles', 
-    desc: '전체적인 이미지의 분위기나 특정 테마를 결정하는 스타일입니다.' 
-  },
-  { 
-    id: 'Texture & Material', 
-    name: '🧱 질감과 재료', 
-    icon: 'fa-mound', 
-    desc: '텍스트를 구성하는 소재의 질감과 촉각적인 느낌을 강조하는 스타일입니다.' 
-  },
-  { 
-    id: 'Layout & Structure', 
-    name: '📐 형태와 구조', 
-    icon: 'fa-layer-group', 
-    desc: '텍스트의 배치, 각도, 정렬 방식을 통해 시각적인 재미를 주는 스타일입니다.' 
-  },
-  { 
-    id: 'Color & Effect', 
-    name: '🎨 색채와 효과', 
-    icon: 'fa-palette', 
-    desc: '색상의 조화나 특수 효과를 통해 시선을 사로잡는 스타일입니다.' 
-  },
+  { id: 'all', name: '🏠 전체', icon: 'fa-border-all', desc: '모든 스타일' },
+  { id: 'Mood & Concept', name: '🎭 컨셉', icon: 'fa-wand-magic-sparkles', desc: '분위기 중심' },
+  { id: 'Texture & Material', name: '🧱 질감', icon: 'fa-mound', desc: '소재와 질감' },
+  { id: 'Layout & Structure', name: '📐 형태', icon: 'fa-layer-group', desc: '구조와 배치' },
+  { id: 'Color & Effect', name: '🎨 효과', icon: 'fa-palette', desc: '색채와 특수효과' },
 ];
 
 const App: React.FC = () => {
@@ -61,8 +36,8 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const savedImages = localStorage.getItem('hangeul_art_mydata');
-    if (savedImages) setMyImages(JSON.parse(savedImages));
+    const saved = localStorage.getItem('hangeul_art_mydata');
+    if (saved) setMyImages(JSON.parse(saved));
   }, []);
 
   useEffect(() => {
@@ -83,27 +58,18 @@ const App: React.FC = () => {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const text = e.target.value;
     setInputText(text);
-    if (selectedStyle) {
-      updatePrompt(selectedStyle, text);
-    }
-  };
-
-  const copyToClipboard = () => {
-    if (!prompt) return;
-    navigator.clipboard.writeText(prompt);
-    alert('프롬프트가 복사되었습니다!');
+    if (selectedStyle) updatePrompt(selectedStyle, text);
   };
 
   const handleGenerate = async () => {
     if (!prompt || isGenerating) return;
 
-    // 1단계: API 키 선택 여부 선제적 확인
+    // 가이드라인: 키 선택 여부 확인 및 요청
     if (window.aistudio) {
       const hasKey = await window.aistudio.hasSelectedApiKey();
       if (!hasKey) {
-        setError("API 키를 먼저 선택해야 합니다. 열쇠 아이콘을 클릭해주세요.");
+        // 가이드라인: 키 선택창을 띄우고 레이스 컨디션을 방지하기 위해 즉시 진행 시도
         await window.aistudio.openSelectKey();
-        return; // 사용자가 키를 선택하는 동안 중단
       }
     }
 
@@ -116,76 +82,77 @@ const App: React.FC = () => {
         const newImg: GeneratedImage = {
           id: Date.now().toString(),
           url: imageUrl,
-          prompt: prompt,
-          styleName: selectedStyle?.name || "사용자 지정",
+          prompt,
+          styleName: selectedStyle?.name || "사용자",
           createdAt: Date.now()
         };
         setMyImages(prev => [newImg, ...prev]);
         setActiveTab('mydata');
-      } else {
-        setError("이미지 데이터를 받지 못했습니다. 다시 시도해 주세요.");
       }
     } catch (e: any) {
       console.error(e);
-      if (e.message === "API_KEY_NOT_FOUND" || e.message?.includes("API Key must be set")) {
-        setError("API 키가 아직 준비되지 않았습니다. 상단 열쇠 아이콘을 눌러 다시 선택해 주세요.");
+      // 가이드라인: API 키 누락 또는 유효하지 않은 키 오류 처리
+      if (e.message === "MISSING_API_KEY" || e.message?.includes("API Key must be set")) {
+        setError("API 키를 선택해 주세요. (상단 열쇠 버튼)");
         if (window.aistudio) await window.aistudio.openSelectKey();
       } else if (e.message?.includes("Requested entity was not found")) {
-        setError("선택한 API 키의 권한이 없거나 만료되었습니다. 다른 키를 선택해 주세요.");
+        setError("유효하지 않은 API 키입니다. 다시 선택해 주세요.");
         if (window.aistudio) await window.aistudio.openSelectKey();
       } else {
-        setError("생성 오류: " + (e.message || "서버 응답을 확인해 주세요."));
+        setError("오류: " + (e.message || "생성 실패"));
       }
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const currentCat = CATEGORIES.find(c => c.id === selectedCategory);
   const filteredStyles = selectedCategory === 'all' 
     ? STYLES 
     : STYLES.filter(s => s.category === selectedCategory);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0f172a] text-white overflow-hidden">
-      <header className="glass sticky top-0 z-40 px-6 py-4 flex items-center justify-between border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 w-10 h-10 rounded-lg flex items-center justify-center shadow-lg">
-            <span className="text-xl font-bold">한</span>
+    <div className="min-h-screen flex flex-col bg-[#020617] text-slate-100 selection:bg-indigo-500/30">
+      {/* Header */}
+      <header className="glass sticky top-0 z-50 px-8 py-4 flex items-center justify-between border-b border-white/5 shadow-2xl">
+        <div className="flex items-center gap-4">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <span className="font-black text-xl">H</span>
           </div>
-          <h1 className="text-xl font-bold tracking-tight">Hangeul Art <span className="text-indigo-400">Pro</span></h1>
+          <h1 className="text-xl font-bold tracking-tight">Hangeul Art <span className="text-indigo-400">Studio</span></h1>
         </div>
         
-        <div className="flex items-center gap-4">
-          <button onClick={() => setActiveTab('templates')} className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all ${activeTab === 'templates' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>스타일 템플릿</button>
-          <button onClick={() => setActiveTab('mydata')} className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all ${activeTab === 'mydata' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>My Data</button>
-          <button onClick={() => window.aistudio?.openSelectKey()} title="API 키 선택" className="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-all ring-2 ring-indigo-500/20"><i className="fa-solid fa-key"></i></button>
+        <div className="flex items-center gap-2 p-1 bg-slate-900/50 rounded-2xl border border-white/5">
+          <button onClick={() => setActiveTab('templates')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'templates' ? 'bg-indigo-600 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>템플릿</button>
+          <button onClick={() => setActiveTab('mydata')} className={`px-6 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'mydata' ? 'bg-indigo-600 shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>내 보관함</button>
+          <button onClick={() => window.aistudio?.openSelectKey()} className="ml-2 w-10 h-10 flex items-center justify-center text-indigo-400 hover:bg-white/5 rounded-xl transition-all" title="API 설정"><i className="fa-solid fa-key"></i></button>
         </div>
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row h-[calc(100vh-73px)] overflow-hidden">
+        {/* Sidebar / Main Content Area */}
         <section className="flex-1 overflow-hidden flex flex-col lg:flex-row">
           {activeTab === 'templates' ? (
             <>
-              <nav className="w-full lg:w-96 border-r border-white/5 bg-slate-900/40 overflow-y-auto p-6 flex flex-col gap-4 shrink-0">
+              <nav className="w-full lg:w-72 border-r border-white/5 bg-slate-900/20 overflow-y-auto p-4 flex flex-col gap-2 shrink-0">
+                <div className="px-4 py-2 text-[10px] font-black text-slate-600 uppercase tracking-widest">분류</div>
                 {CATEGORIES.map(cat => (
-                  <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className={`w-full p-5 rounded-3xl transition-all text-left ${selectedCategory === cat.id ? 'bg-indigo-600/20 ring-1 ring-indigo-500/50 shadow-xl' : 'hover:bg-white/5'}`}>
-                    <div className="flex items-center gap-4 mb-2">
-                      <i className={`fa-solid ${cat.icon} text-lg ${selectedCategory === cat.id ? 'text-indigo-400' : 'text-slate-500'}`}></i>
+                  <button key={cat.id} onClick={() => setSelectedCategory(cat.id)} className={`w-full px-5 py-4 rounded-2xl transition-all text-left group ${selectedCategory === cat.id ? 'bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 shadow-xl' : 'text-slate-500 hover:bg-white/5 hover:text-slate-300'}`}>
+                    <div className="flex items-center gap-3">
+                      <i className={`fa-solid ${cat.icon} text-lg ${selectedCategory === cat.id ? 'text-indigo-400' : 'text-slate-600 group-hover:text-slate-400'}`}></i>
                       <span className="font-bold">{cat.name}</span>
                     </div>
-                    <p className="text-xs text-slate-500 leading-relaxed">{cat.desc}</p>
                   </button>
                 ))}
               </nav>
 
-              <div className="flex-1 overflow-y-auto p-8 lg:p-12">
-                <div className="grid grid-cols-2 xl:grid-cols-3 gap-6 pb-24">
+              <div className="flex-1 overflow-y-auto p-8 lg:p-10 space-y-10">
+                <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5 pb-20">
                   {filteredStyles.map(style => (
-                    <button key={style.id} onClick={() => handleStyleClick(style)} className={`group relative p-8 rounded-[32px] transition-all border-2 ${selectedStyle?.id === style.id ? 'bg-indigo-600/20 border-indigo-500 scale-[1.02]' : 'glass border-transparent hover:border-white/20'}`}>
-                      <div className="text-5xl mb-6">{style.icon}</div>
-                      <h3 className="font-bold text-xl mb-2">{style.name}</h3>
-                      <p className="text-sm text-slate-500 line-clamp-2">{style.description}</p>
+                    <button key={style.id} onClick={() => handleStyleClick(style)} className={`group relative p-6 rounded-[28px] transition-all border-2 text-left animate-fade-in ${selectedStyle?.id === style.id ? 'bg-indigo-600/10 border-indigo-500 shadow-2xl' : 'glass border-transparent hover:border-white/10 hover:bg-white/5'}`}>
+                      <div className="text-4xl mb-4 group-hover:scale-110 transition-transform duration-300">{style.icon}</div>
+                      <h3 className="font-bold text-lg mb-1">{style.name}</h3>
+                      <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{style.description}</p>
+                      {selectedStyle?.id === style.id && <div className="absolute top-4 right-4 text-indigo-500"><i className="fa-solid fa-circle-check"></i></div>}
                     </button>
                   ))}
                 </div>
@@ -193,20 +160,26 @@ const App: React.FC = () => {
             </>
           ) : (
             <div className="flex-1 overflow-y-auto p-12">
-              <h2 className="text-3xl font-bold mb-12">생성된 내 작업물</h2>
+              <h2 className="text-3xl font-black mb-10 flex items-center gap-4"><i className="fa-solid fa-sparkles text-indigo-500"></i> 생성된 작업물</h2>
               {myImages.length === 0 ? (
-                <div className="h-64 flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-white/10 rounded-[40px]">
-                   <i className="fa-solid fa-cloud-moon text-5xl mb-4 opacity-20"></i>
-                   <p className="font-bold">아직 생성한 이미지가 없습니다.</p>
+                <div className="h-80 glass border-dashed flex flex-col items-center justify-center text-slate-600 rounded-[40px]">
+                  <i className="fa-solid fa-moon text-6xl mb-4 opacity-10"></i>
+                  <p className="font-bold">보관된 이미지가 없습니다.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {myImages.map(img => (
-                    <div key={img.id} className="glass rounded-[32px] overflow-hidden group shadow-2xl transition-transform hover:scale-[1.02]">
-                      <img src={img.url} className="w-full aspect-square object-cover" alt={img.prompt} />
-                      <div className="p-5">
-                        <span className="text-xs font-bold text-indigo-400 uppercase">{img.styleName}</span>
-                        <p className="text-sm text-slate-400 line-clamp-1 mt-1 italic">"{img.prompt}"</p>
+                    <div key={img.id} className="glass rounded-[32px] overflow-hidden group shadow-2xl transition-all hover:ring-2 hover:ring-indigo-500/50">
+                      <div className="relative aspect-square">
+                        <img src={img.url} className="w-full h-full object-cover" alt={img.prompt} />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+                           <button onClick={() => { const a = document.createElement('a'); a.href = img.url; a.download = `art-${img.id}.png`; a.click(); }} className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center hover:bg-indigo-500 hover:text-white transition-all"><i className="fa-solid fa-download"></i></button>
+                           <button onClick={() => setMyImages(prev => prev.filter(i => i.id !== img.id))} className="w-12 h-12 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-all"><i className="fa-solid fa-trash"></i></button>
+                        </div>
+                      </div>
+                      <div className="p-5 border-t border-white/5 bg-slate-900/30">
+                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{img.styleName}</span>
+                        <p className="text-xs text-slate-400 line-clamp-1 mt-1 font-medium italic">"{img.prompt}"</p>
                       </div>
                     </div>
                   ))}
@@ -216,29 +189,65 @@ const App: React.FC = () => {
           )}
         </section>
 
-        <aside className="w-full md:w-[400px] glass border-l border-white/10 p-8 flex flex-col gap-8 shrink-0">
-          <h2 className="text-2xl font-black italic">GENERATE PANEL</h2>
+        {/* Control Panel (Right) */}
+        <aside className="w-full md:w-[420px] glass border-l border-white/5 p-8 flex flex-col gap-8 shrink-0 shadow-[-20px_0_40px_rgba(0,0,0,0.5)] z-40">
           <div className="space-y-6 flex-1 overflow-y-auto pr-2">
-            <div className="space-y-2">
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">한글 텍스트 입력</label>
-              <input type="text" value={inputText} onChange={handleInputChange} placeholder="예: 기적, 사랑, 2025" className="w-full bg-slate-900 border border-white/10 rounded-2xl px-6 py-4 focus:ring-2 focus:ring-indigo-500/50 outline-none text-lg font-bold" />
-            </div>
+            {selectedStyle ? (
+              <div className="space-y-6 animate-fade-in">
+                <div className="p-6 bg-gradient-to-br from-indigo-600/20 to-purple-600/20 rounded-[32px] border border-indigo-500/20 relative overflow-hidden group">
+                   <div className="absolute -top-10 -right-10 text-9xl opacity-5 group-hover:scale-125 transition-transform duration-700">{selectedStyle.icon}</div>
+                   <div className="flex items-center gap-5 relative z-10">
+                     <div className="text-5xl">{selectedStyle.icon}</div>
+                     <div>
+                       <h3 className="text-xl font-bold">{selectedStyle.name}</h3>
+                       <p className="text-[10px] font-black text-indigo-400 tracking-tighter uppercase">{selectedStyle.englishName}</p>
+                     </div>
+                   </div>
+                   <div className="mt-6 space-y-3 relative z-10">
+                      <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Template 프롬프트</div>
+                      <div className="p-4 bg-black/40 rounded-2xl text-[12px] text-slate-400 italic font-medium leading-relaxed border border-white/5">
+                        "{selectedStyle.template}"
+                      </div>
+                      <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-4">예시 (Example)</div>
+                      <div className="p-4 bg-indigo-500/5 rounded-2xl text-[12px] text-indigo-300/80 font-medium leading-relaxed border border-indigo-500/10">
+                        "{selectedStyle.example}"
+                      </div>
+                   </div>
+                </div>
 
-            <div className="space-y-2">
-              <label className="text-[11px] font-black text-slate-500 uppercase tracking-widest px-1">AI 프롬프트 (자동 생성)</label>
-              <textarea value={prompt} readOnly className="w-full h-40 bg-black/30 border border-white/10 rounded-2xl px-5 py-5 text-sm italic text-slate-400 resize-none shadow-inner" placeholder="스타일을 선택하면 프롬프트가 완성됩니다." />
-            </div>
+                <div className="space-y-4">
+                  <div className="space-y-2 px-1">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Hangeul Text</label>
+                    <input type="text" value={inputText} onChange={handleInputChange} placeholder="변환할 한글을 입력하세요" className="w-full bg-slate-900 border border-white/10 rounded-2xl px-6 py-5 focus:ring-2 focus:ring-indigo-500/50 outline-none text-xl font-black placeholder:text-slate-700 transition-all shadow-inner" />
+                  </div>
 
-            <div className="pt-4 space-y-4">
-              {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl text-xs font-bold flex gap-2 animate-pulse"><i className="fa-solid fa-circle-exclamation mt-0.5"></i>{error}</div>}
-              <button onClick={handleGenerate} disabled={isGenerating || !prompt} className={`w-full py-5 rounded-[24px] font-black text-xl flex items-center justify-center gap-3 transition-all ${isGenerating || !prompt ? 'bg-slate-800 text-slate-600' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:scale-[1.02] shadow-2xl shadow-indigo-600/30'}`}>
-                {isGenerating ? <i className="fa-solid fa-spinner animate-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
-                <span>{isGenerating ? '생성 중...' : '이미지 만들기'}</span>
-              </button>
-              <div className="text-center">
-                <p className="text-[10px] text-slate-600">Gemini 3 Pro Image (Nano Banana Pro) 모델을 사용합니다.</p>
-                <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-[10px] text-indigo-500/50 hover:underline">Billing 안내</a>
+                  <div className="space-y-2 px-1">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Final AI Prompt</label>
+                      <button onClick={() => { navigator.clipboard.writeText(prompt); alert('복사되었습니다!'); }} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold"><i className="fa-solid fa-copy mr-1"></i> 복사</button>
+                    </div>
+                    <textarea value={prompt} readOnly className="w-full h-32 bg-black/40 border border-white/10 rounded-2xl px-5 py-4 text-[13px] italic text-slate-500 resize-none shadow-inner leading-relaxed" />
+                  </div>
+                </div>
               </div>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center p-10 bg-slate-900/20 rounded-[40px] border border-dashed border-white/10">
+                 <i className="fa-solid fa-hand-pointer text-4xl mb-4 text-indigo-500/30 animate-bounce"></i>
+                 <p className="text-slate-500 font-bold text-lg leading-snug">좌측 리스트에서<br/>스타일을 선택해 주세요</p>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-4 space-y-4 border-t border-white/5">
+            {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl text-[11px] font-bold flex gap-3 animate-pulse italic"><i className="fa-solid fa-circle-exclamation mt-0.5"></i>{error}</div>}
+            
+            <button onClick={handleGenerate} disabled={isGenerating || !prompt} className={`w-full py-6 rounded-3xl font-black text-xl flex items-center justify-center gap-4 transition-all active:scale-[0.98] ${isGenerating || !prompt ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-[0_15px_40px_rgba(79,70,229,0.3)]'}`}>
+              {isGenerating ? <><i className="fa-solid fa-spinner animate-spin"></i><span>생성 중...</span></> : <><i className="fa-solid fa-wand-magic-sparkles text-2xl"></i><span>AI 아트 생성</span></>}
+            </button>
+            
+            <div className="flex flex-col items-center gap-1 opacity-40 hover:opacity-100 transition-opacity">
+               <p className="text-[9px] font-bold text-slate-500 tracking-widest uppercase">Powered by Gemini 3 Pro Image</p>
+               <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="text-[9px] text-indigo-500 hover:underline">Billing & Policy</a>
             </div>
           </div>
         </aside>

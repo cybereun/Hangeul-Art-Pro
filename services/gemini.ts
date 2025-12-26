@@ -8,12 +8,12 @@ const IMAGE_MODEL = 'gemini-3-pro-image-preview';
 export async function generateHangeulImage(prompt: string): Promise<string | null> {
   const apiKey = process.env.API_KEY;
   
-  // 브라우저 런타임에서 키가 아직 주입되지 않은 경우를 위한 체크
-  if (!apiKey) {
-    throw new Error("API_KEY_NOT_FOUND");
+  // 브라우저 런타임에서 키가 비어있으면 라이브러리 오류를 피하기 위해 명시적 에러 발생
+  if (!apiKey || apiKey.trim() === "") {
+    throw new Error("MISSING_API_KEY");
   }
 
-  // 매 호출 시 최신 API 키를 사용하도록 인스턴스 생성
+  // 가이드라인: 호출 직전에 새 인스턴스 생성 (최신 키 반영)
   const ai = new GoogleGenAI({ apiKey });
 
   try {
@@ -31,7 +31,6 @@ export async function generateHangeulImage(prompt: string): Promise<string | nul
     });
 
     if (response.candidates?.[0]?.content?.parts) {
-      // 이미지 파트를 찾아 반환 (첫 번째 파트가 아닐 수 있음)
       for (const part of response.candidates[0].content.parts) {
         if (part.inlineData) {
           const base64EncodeString: string = part.inlineData.data;
@@ -41,7 +40,7 @@ export async function generateHangeulImage(prompt: string): Promise<string | nul
     }
     return null;
   } catch (error: any) {
-    console.error("Gemini Image Generation Error:", error);
+    console.error("Gemini API Error:", error);
     throw error;
   }
 }
