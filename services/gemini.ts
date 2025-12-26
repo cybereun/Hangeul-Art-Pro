@@ -1,22 +1,19 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// Nano Banana Pro alias for gemini-3-pro-image-preview
 const IMAGE_MODEL = 'gemini-3-pro-image-preview';
 
-export async function generateHangeulImage(prompt: string): Promise<string | null> {
-  // Use the mandatory GoogleGenAI client initialization with process.env.API_KEY directly as required by guidelines
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+/**
+ * 사용자가 제공한 API 키를 사용하여 이미지를 생성합니다.
+ */
+export async function generateHangeulImage(prompt: string, apiKey: string): Promise<string | null> {
+  const ai = new GoogleGenAI({ apiKey: apiKey });
 
   try {
     const response = await ai.models.generateContent({
       model: IMAGE_MODEL,
       contents: {
-        parts: [
-          {
-            text: prompt,
-          },
-        ],
+        parts: [{ text: prompt }],
       },
       config: {
         imageConfig: {
@@ -26,29 +23,27 @@ export async function generateHangeulImage(prompt: string): Promise<string | nul
       },
     });
 
-    // Iterate through all parts to find the image part as per guidelines
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:image/png;base64,${part.inlineData.data}`;
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          const base64EncodeString: string = part.inlineData.data;
+          return `data:image/png;base64,${base64EncodeString}`;
+        }
       }
     }
-
     return null;
   } catch (error: any) {
     console.error("Gemini Image Generation Error:", error);
-    // If request fails due to missing entity (often linked to key selection issues), signal a reset
-    if (error.message?.includes("Requested entity was not found")) {
-      throw new Error("RESET_KEY");
-    }
     throw error;
   }
 }
 
-export async function testApiConnection(): Promise<boolean> {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+/**
+ * API 키의 유효성을 가벼운 쿼리로 테스트합니다.
+ */
+export async function testApiConnection(apiKey: string): Promise<boolean> {
+  const ai = new GoogleGenAI({ apiKey: apiKey });
   try {
-    // Perform a lightweight test request
-    // Correctly setting thinkingBudget: 0 when maxOutputTokens is set for Gemini 3 models
     await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: 'Ping',
