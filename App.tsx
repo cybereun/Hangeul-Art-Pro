@@ -4,10 +4,16 @@ import { STYLES } from './constants';
 import { StyleTemplate, GeneratedImage } from './types';
 import { generateHangeulImage } from './services/gemini';
 
-// 플랫폼 API 키 관리 함수 선언 - AIStudio 타입을 사용하여 선언 충돌을 해결합니다.
+// Define the AIStudio interface for the platform's API key management
+interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}
+
+// Extend the Window interface to include aistudio
 declare global {
   interface Window {
-    aistudio: AIStudio;
+    aistudio?: AIStudio;
   }
 }
 
@@ -91,12 +97,13 @@ const App: React.FC = () => {
   const handleGenerate = async () => {
     if (!prompt || isGenerating) return;
 
-    // API 키 선택 여부 확인 (플랫폼 표준 가이드라인)
+    // 1단계: API 키 선택 여부 선제적 확인
     if (window.aistudio) {
       const hasKey = await window.aistudio.hasSelectedApiKey();
       if (!hasKey) {
+        setError("API 키를 먼저 선택해야 합니다. 열쇠 아이콘을 클릭해주세요.");
         await window.aistudio.openSelectKey();
-        // 키 선택 창을 띄운 후에는 즉시 진행 (레이스 컨디션 방지)
+        return; // 사용자가 키를 선택하는 동안 중단
       }
     }
 
@@ -116,16 +123,18 @@ const App: React.FC = () => {
         setMyImages(prev => [newImg, ...prev]);
         setActiveTab('mydata');
       } else {
-        setError("이미지를 생성하지 못했습니다. 다시 시도해 주세요.");
+        setError("이미지 데이터를 받지 못했습니다. 다시 시도해 주세요.");
       }
     } catch (e: any) {
       console.error(e);
-      // API Key selection error handling as per guidelines
-      if (e.message?.includes("Requested entity was not found")) {
-        setError("API 키 설정이 필요합니다. 상단의 키 버튼을 클릭해 주세요.");
+      if (e.message === "API_KEY_NOT_FOUND" || e.message?.includes("API Key must be set")) {
+        setError("API 키가 아직 준비되지 않았습니다. 상단 열쇠 아이콘을 눌러 다시 선택해 주세요.");
+        if (window.aistudio) await window.aistudio.openSelectKey();
+      } else if (e.message?.includes("Requested entity was not found")) {
+        setError("선택한 API 키의 권한이 없거나 만료되었습니다. 다른 키를 선택해 주세요.");
         if (window.aistudio) await window.aistudio.openSelectKey();
       } else {
-        setError("오류가 발생했습니다: " + (e.message || "알 수 없는 오류"));
+        setError("생성 오류: " + (e.message || "서버 응답을 확인해 주세요."));
       }
     } finally {
       setIsGenerating(false);
@@ -150,7 +159,7 @@ const App: React.FC = () => {
         <div className="flex items-center gap-4">
           <button onClick={() => setActiveTab('templates')} className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all ${activeTab === 'templates' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>스타일 템플릿</button>
           <button onClick={() => setActiveTab('mydata')} className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all ${activeTab === 'mydata' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>My Data</button>
-          <button onClick={() => window.aistudio?.openSelectKey()} title="API 키 선택" className="w-10 h-10 rounded-full flex items-center justify-center bg-white/5 text-slate-400 hover:text-white transition-all"><i className="fa-solid fa-key"></i></button>
+          <button onClick={() => window.aistudio?.openSelectKey()} title="API 키 선택" className="w-10 h-10 rounded-full flex items-center justify-center bg-white/10 text-indigo-400 hover:bg-indigo-500 hover:text-white transition-all ring-2 ring-indigo-500/20"><i className="fa-solid fa-key"></i></button>
         </div>
       </header>
 
@@ -185,17 +194,24 @@ const App: React.FC = () => {
           ) : (
             <div className="flex-1 overflow-y-auto p-12">
               <h2 className="text-3xl font-bold mb-12">생성된 내 작업물</h2>
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                {myImages.map(img => (
-                  <div key={img.id} className="glass rounded-[32px] overflow-hidden group shadow-2xl">
-                    <img src={img.url} className="w-full aspect-square object-cover" alt={img.prompt} />
-                    <div className="p-5">
-                      <span className="text-xs font-bold text-indigo-400 uppercase">{img.styleName}</span>
-                      <p className="text-sm text-slate-400 line-clamp-1 mt-1 italic">"{img.prompt}"</p>
+              {myImages.length === 0 ? (
+                <div className="h-64 flex flex-col items-center justify-center text-slate-500 border-2 border-dashed border-white/10 rounded-[40px]">
+                   <i className="fa-solid fa-cloud-moon text-5xl mb-4 opacity-20"></i>
+                   <p className="font-bold">아직 생성한 이미지가 없습니다.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                  {myImages.map(img => (
+                    <div key={img.id} className="glass rounded-[32px] overflow-hidden group shadow-2xl transition-transform hover:scale-[1.02]">
+                      <img src={img.url} className="w-full aspect-square object-cover" alt={img.prompt} />
+                      <div className="p-5">
+                        <span className="text-xs font-bold text-indigo-400 uppercase">{img.styleName}</span>
+                        <p className="text-sm text-slate-400 line-clamp-1 mt-1 italic">"{img.prompt}"</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -214,7 +230,7 @@ const App: React.FC = () => {
             </div>
 
             <div className="pt-4 space-y-4">
-              {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl text-xs font-bold flex gap-2"><i className="fa-solid fa-circle-exclamation mt-0.5"></i>{error}</div>}
+              {error && <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl text-xs font-bold flex gap-2 animate-pulse"><i className="fa-solid fa-circle-exclamation mt-0.5"></i>{error}</div>}
               <button onClick={handleGenerate} disabled={isGenerating || !prompt} className={`w-full py-5 rounded-[24px] font-black text-xl flex items-center justify-center gap-3 transition-all ${isGenerating || !prompt ? 'bg-slate-800 text-slate-600' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:scale-[1.02] shadow-2xl shadow-indigo-600/30'}`}>
                 {isGenerating ? <i className="fa-solid fa-spinner animate-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>}
                 <span>{isGenerating ? '생성 중...' : '이미지 만들기'}</span>
